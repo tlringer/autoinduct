@@ -76,7 +76,7 @@ let lookup_definition env def sigma =
 
 (* Equal but convert to constr (maybe this exists already in the Coq API) *)
 let eequal trm1 trm2 sigma =
-  sigma, Constr.equal (EConstr.to_constr sigma trm1) (EConstr.to_constr sigma trm2)
+  sigma, EConstr.eq_constr sigma trm1 trm2
 
 (* Push a local binding to an environment *)
 let push_local (n, t) env =
