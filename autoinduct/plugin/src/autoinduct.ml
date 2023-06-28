@@ -1,29 +1,47 @@
+module CMonad = Monad
+
 open Proofview
 open EConstr
 open Environ
 
-(* --- Useful higher-order functions, mostly from https://github.com/uwplse/coq-plugin-lib --- *)
+(* --- Useful higher-order functions --- *)
+module State = struct
+  module Self = struct
+    type 'a t = Evd.evar_map -> Evd.evar_map * 'a
 
-let bind f1 f2 = (fun sigma -> let sigma, a = f1 sigma in f2 a sigma) 
-let ret a = fun sigma -> sigma, a
+    let (>>=) f1 f2 = (fun sigma -> let sigma, a = f1 sigma in f2 a sigma)
+
+    let (>>) f1 f2 = f1 >>= fun () -> f2
+
+    let map f x = fun sigma -> let sigma, x = x sigma in sigma, f x
+
+    let return a = fun sigma -> sigma, a
+  end
+
+  include CMonad.Make(Self)
+
+  let get sigma = sigma, sigma
+
+  let set sigma = fun sigma' -> sigma, ()
+end
+open State.Self
 
 (* Stateful if/else *)
 let branch_state p f g a =
-  bind
-    (fun sigma_f ->
-      bind
-        (p a)
-        (fun b sigma_t -> ret b (if b then sigma_t else sigma_f))
-        sigma_f)
-    (fun b -> if b then f a else g a)
+  State.get >>= fun sigma_f ->
+  p a >>= fun b ->
+  if b then f a
+  else begin
+    State.set sigma_f >>= fun () ->
+    g a
+  end
 
 (* Like List.fold_left, but threading state *)
-let fold_left_state f b l sigma =
-  List.fold_left (fun (sigma, b) a -> f b a sigma) (sigma, b) l
+let fold_left_state = State.List.fold_left
 
 (* fold_left2 with state *)
-let fold_left2_state f c l1 l2 sigma =
-  List.fold_left2 (fun (sigma, c) a b -> f c a b sigma) (ret c sigma) l1 l2
+let fold_left2_state f acc l1 l2 =
+  State.List.fold_left2 (fun _ -> failwith "not same length") f acc l1 l2
 
 (* Like fold_left_state, but over arrays *)
 let fold_left_state_array f b args =
@@ -33,10 +51,10 @@ let fold_left_state_array f b args =
 let fold_left2_state_array f c args1 args2 sigma =
   fold_left2_state f c (Array.to_list args1) (Array.to_list args2) sigma
 
-(* Stateful forall2 *)
+(* Stateful forall2, from https://github.com/uwplse/coq-plugin-lib *)
 let forall2_state_array p args1 args2 =
   fold_left2_state_array
-    (fun b a1 a2 -> branch_state (p a1) (fun _ -> ret b) (fun _ -> ret false) a2)
+    (fun b a1 a2 -> branch_state (p a1) (fun _ -> return b) (fun _ -> return false) a2)
     true
     args1
     args2
