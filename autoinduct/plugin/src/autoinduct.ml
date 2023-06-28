@@ -67,11 +67,12 @@ let forall2_state_array p args1 args2 =
 let lookup_definition env def sigma =
   match kind sigma def with
   | Constr.Const (c, u) ->
-     let cb = lookup_constant c env in
-     (match Global.body_of_constant_body Library.indirect_accessor cb with
-      | Some(e, _, _) -> EConstr.of_constr e
-      | None -> CErrors.user_err (Pp.str "The supplied term is not a constant"))
-  | _ -> CErrors.user_err (Pp.str "The supplied term is not a constant")
+    begin match constant_value_in env (c, EConstr.Unsafe.to_instance u) with
+      | v -> EConstr.of_constr v
+      | exception NotEvaluableConst _ ->
+        CErrors.user_err (Pp.str "The supplied term is not a transparent constant.")
+    end
+  | _ -> CErrors.user_err (Pp.str "The supplied term is not a constant.")
 
 (* Equal but convert to constr (maybe this exists already in the Coq API) *)
 let eequal trm1 trm2 sigma =
